@@ -1,4 +1,13 @@
 # Import the dependencies.
+from matplotlib import style
+style.use('fivethirtyeight')
+import matplotlib.pyplot as plt
+
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+import datetime as dt
+
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
@@ -15,7 +24,7 @@ engine = create_engine("sqlite:///hawaii.sqlite")
 Base = automap_base()
 
 # reflect the tables
-Base.prepare(autoload_with=engine)
+Base.prepare(engine, reflect=True)
 #print(Base.classes.keys())
 
 # Save references to each table
@@ -53,8 +62,9 @@ def homepage():
 @app.route("/api/v1.0/precipitation")
 def precipitation():
     # find most recent date and date for one year prior
-    most_recent_date = session.query(func.max(Measurement.date))
-    one_year_prior = dt.datetime.strptime(last_date, '%Y-%m-%d') - dt.timedelta(days=365)
+    most_recent_date = dt.datetime(2017, 8, 23)
+    # Calculate the date one year from the last date in data set.
+    one_year_prior = (most_recent_date - timedelta(days=365)).strftime('%Y-%m-%d')
 
     # query for date and prcp data
     results = session.query(Measurement.date, Measurement.prcp).\
@@ -71,7 +81,7 @@ def precipitation():
 @app.route("/api/v1.0/stations")
 def stations():
     # query list of all stations
-    results = session.query(Station.station).all*()
+    results = session.query(Station.station).all()
     # return jsonified list of all stations
     station_list = []
     for station, in results:
@@ -79,45 +89,53 @@ def stations():
     
     return jsonify(station_list)
 
-# define tobs route
+# define temp observations route
 @app.route("/api/v1.0/tobs")
 def tobs():
-    # find most active station in terms of observations
+     # find most active station in terms of observations
     most_active_station = session.query(Measurement.station).\
         group_by(Measurement.station).\
-        order_by(func.count(Measurement.station).desc()).first()
-    #narrow down data for this station
+        order_by(func.count(Measurement.station).desc()).first()[0]
+    # narrow down data for this station
     most_active_last_date = session.query(func.max(Measurement.date)).\
-        filter(Measurement.station == most_active_station)
-    one_year_most_active = dt.datetime.strptime(last_date_most_active, '%Y-%m-%d') - dt.timedelta(days=365)
-    #query the temp observations for this station
+        filter(Measurement.station == most_active_station).scalar()
+    one_year_most_active = (dt.datetime.strptime(most_active_last_date, '%Y-%m-%d') - timedelta(days=365)).strftime('%Y-%m-%d')
+    # query the temp observations for this station
     results = session.query(Measurement.date, Measurement.tobs).\
         filter(Measurement.station == most_active_station).\
         filter(Measurement.date >= one_year_most_active).all()
-    #convert query results to list of dictionaries and jsonify
+    # convert query results to list of dictionaries and jsonify
     tobs_data = [{'date': date, 'tobs': tobs} for date, tobs in results]
 
     return jsonify(tobs_data)
 
-# define start route
-# define start/end route
-# define temperature statistics routes
+# define temperature statistics route for start date
 @app.route("/api/v1.0/<start>")
+def temp_stats_start(start):
+    # query temperature statistics for start date
+    results = session.query(
+        func.min(Measurement.tobs),
+        func.avg(Measurement.tobs),
+        func.max(Measurement.tobs)
+    ).filter(Measurement.date >= start).all()
+
+    temp_stats = {
+        "TMIN": results[0][0],
+        "TAVG": results[0][1],
+        "TMAX": results[0][2]
+    }
+    return jsonify(temp_stats)
+
+# define temperature statistics route for start and end date
 @app.route("/api/v1.0/<start>/<end>")
-def temperature_stats(start, end=None):
-    if end:
-        results = session.query(
-            func.min(Measurement.tobs),
-            func.avg(Measurement.tobs),
-            func.max(Measurement.tobs)
-        ).filter(Measurement.date >= start).filter(Measurement.date <= end).all()
-    else:
-        results = session.query(
-            func.min(Measurement.tobs),
-            func.avg(Measurement.tobs),
-            func.max(Measurement.tobs)
-        ).filter(Measurement.date >= start).all()
-    
+def temp_stats_start_end(start, end):
+    # query temperature statistics for start and end date range
+    results = session.query(
+        func.min(Measurement.tobs),
+        func.avg(Measurement.tobs),
+        func.max(Measurement.tobs)
+    ).filter(Measurement.date >= start).filter(Measurement.date <= end).all()
+
     temp_stats = {
         "TMIN": results[0][0],
         "TAVG": results[0][1],
