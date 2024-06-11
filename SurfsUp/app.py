@@ -1,26 +1,29 @@
 # Import the dependencies.
 import sqlalchemy
-from sqlalchemy import create_engine, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func
 
 from flask import Flask, jsonify
 
 #################################################
 # Database Setup
 #################################################
-engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+engine = create_engine("sqlite:///hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
+
 # reflect the tables
-Base.prepare(engine, reflect=True)
+Base.prepare(autoload_with=engine)
+#print(Base.classes.keys())
+
 # Save references to each table
 Measurement = Base.classes.measurement
 Station = Base.classes.station
 
 # Create our session (link) from Python to the DB
-Session = sessionmaker(bind=engine)
+#Session = sessionmaker(bind=engine)
 session = Session(engine)
 
 #################################################
@@ -98,3 +101,29 @@ def tobs():
 
 # define start route
 # define start/end route
+# define temperature statistics routes
+@app.route("/api/v1.0/<start>")
+@app.route("/api/v1.0/<start>/<end>")
+def temperature_stats(start, end=None):
+    if end:
+        results = session.query(
+            func.min(Measurement.tobs),
+            func.avg(Measurement.tobs),
+            func.max(Measurement.tobs)
+        ).filter(Measurement.date >= start).filter(Measurement.date <= end).all()
+    else:
+        results = session.query(
+            func.min(Measurement.tobs),
+            func.avg(Measurement.tobs),
+            func.max(Measurement.tobs)
+        ).filter(Measurement.date >= start).all()
+    
+    temp_stats = {
+        "TMIN": results[0][0],
+        "TAVG": results[0][1],
+        "TMAX": results[0][2]
+    }
+    return jsonify(temp_stats)
+
+if __name__ == '__main__':
+    app.run(debug=True)
